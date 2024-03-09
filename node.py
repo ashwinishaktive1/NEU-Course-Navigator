@@ -90,7 +90,7 @@ else:
     print('Failed to retrieve terms. Status code:', term_response.status_code)
 
 print(upcoming_terms)
-# all_course_details = {}
+# all_course_details = []
 
 # for term in upcoming_terms:
 #     TERM_CODE = term['code']
@@ -105,7 +105,7 @@ print(upcoming_terms)
 #         search_response = requests.post(**search_options, allow_redirects=True)
 #         if search_response.status_code == 200:
 #             # Resolved
-#             all_course_details.update(search_response.json())
+#             all_course_details.append(search_response.json())
 #         else:
 #             print('Failed to search for courses. Status code:', search_response.status_code)
 #     else:
@@ -121,26 +121,45 @@ print(upcoming_terms)
 with open('all_courses.json') as f:
     data = json.load(f)
 
-# Normalize the nested JSON data into a DataFrame
-df = pd.json_normalize(data['data'])
+# List to store normalized data
+normalized_data = []
+# Extract relevant information from each JSON object
+for obj in data:
+    for course_obj in obj["data"]:
+        course_info = {
+            "id": course_obj["id"],
+            "term": course_obj["term"],
+            "termDesc": course_obj["termDesc"],
+            "courseReferenceNumber": course_obj["courseReferenceNumber"],
+            "courseNumber": course_obj["courseNumber"],
+            "subject": course_obj["subject"],
+            "subjectDescription": course_obj["subjectDescription"],
+            "sequenceNumber": course_obj["sequenceNumber"],
+            "campusDescription": course_obj["campusDescription"],
+            "scheduleTypeDescription": course_obj["scheduleTypeDescription"],
+            "courseTitle": course_obj["courseTitle"],
+            "creditHours": course_obj["creditHours"],
+            "subjectCourse": course_obj["subjectCourse"],
+            "faculty_banner_id": None,
+            "faculty_displayName": None,
+            "faculty_emailAddress": None
+        }
+        
+        # Check if the "faculty" list is not empty
+        if course_obj["faculty"]:
+            course_info["faculty_banner_id"] = course_obj["faculty"][0]["bannerId"]
+            course_info["faculty_displayName"] = course_obj["faculty"][0]["displayName"]
+            course_info["faculty_emailAddress"] = course_obj["faculty"][0]["emailAddress"]
+        
+        normalized_data.append(course_info)
 
-# Extract faculty details
-df['faculty_banner_id'] = df['faculty'].apply(lambda x: x[0]['bannerId'] if x else None)
-df['faculty_displayName'] = df['faculty'].apply(lambda x: x[0]['displayName'] if x else None)
-df['faculty_emailAddress'] = df['faculty'].apply(lambda x: x[0]['emailAddress'] if x else None)
+print(len(normalized_data))
 
-# Select required columns
-columns = ['id', 'term', 'termDesc', 'courseReferenceNumber', 
-           'courseNumber', 'subject', 'subjectDescription', 
-           'sequenceNumber', 'campusDescription', 'scheduleTypeDescription', 
-           'courseTitle', 'creditHours', 'subjectCourse', 'faculty_banner_id', 
-           'faculty_displayName', 'faculty_emailAddress']
-
-# Create the normalized DataFrame with the selected columns
-df_normalized = df[columns]
+# Convert the list of dictionaries to a DataFrame
+df_normalized = pd.DataFrame(normalized_data)
 df_normalized['course_description'] = ''
-
 print(df_normalized.shape)
+# print(df_normalized.loc[0])
 
 # Function to perform the API request with retries and exponential backoff
 def perform_api_request_with_retry(api_request_func, **kwargs):
@@ -170,16 +189,14 @@ for index, course in df_normalized.iterrows():
     course_description_options['params']['courseReferenceNumber']= course['courseReferenceNumber']
     description_response = perform_api_request_with_retry(requests.post, **course_description_options)
 
-    if description_response.status_code == 200:
-        # Resolved
+    if description_response is not None and description_response.status_code == 200:
         df_normalized.at[index, 'course_description'] = description_response.content
         reset_response = perform_api_request_with_retry(requests.post, **reset_form_options)
         if reset_response.status_code != 200:
             print('Failed to reset search. Status code:', reset_response.status_code)
     else:
+        df_normalized.at[index, 'course_description'] = ''
         print('Failed to get course description. Status code:', description_response.status_code)
 
-print(df_normalized.head(10))
-print(df_normalized.loc[4])
-
+# Writing to a csv file
 df_normalized.to_csv('banner_data.csv', index=True)
