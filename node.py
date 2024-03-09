@@ -104,30 +104,57 @@ else:
 print(upcoming_terms)
 
 """
+Gathering unique subjects available across all terms.
+"""
+all_subjects = []
+
+# Send the request to retrieve terms:
+for term in upcoming_terms:
+    subject_search_options['params']['term'] = term['code']
+    subject_response = requests.get(**subject_search_options)
+
+    # Check if the request was successful:
+    if subject_response.status_code == 200:
+        all_subjects.append(subject_response.json())
+    else:
+        print('Failed to retrieve subjects. Status code:', subject_response.status_code)
+
+unique_codes = set()
+
+for subject_in_term in all_subjects:
+    for subjects in subject_in_term:
+        unique_codes.add(subjects['code'])
+
+unique_codes = list(unique_codes)
+
+"""
 Gathering courses and their descriptive features into a combined JSON file.
 """
 all_course_details = []
 
 # Looping through every term:
 for term in upcoming_terms:
-    TERM_CODE = term['code']
-    post_options['data']['term'] = TERM_CODE
-    search_options['params']['txt_term'] = TERM_CODE
+    for subject_code in unique_codes:
+        TERM_CODE = term['code']
+        print(TERM_CODE, "--", subject_code)
+        post_options['data']['term'] = TERM_CODE
+        search_options['params']['txt_term'] = TERM_CODE
+        search_options['params']['txt_subject'] = subject_code
 
-    # POST to search for courses under the term:
-    post_response = requests.post(**post_options)
+        # POST to search for courses under the term:
+        post_response = requests.post(**post_options)
 
-    # If successful:
-    if post_response.status_code == 200:       
-        print(post_response.json())
-        search_response = requests.post(**search_options, allow_redirects=True)
-        if search_response.status_code == 200:
-            # Append to the all_course_details list:
-            all_course_details.append(search_response.json())
+        # If successful:
+        if post_response.status_code == 200:       
+            print(post_response.json())
+            search_response = requests.post(**search_options, allow_redirects=True)
+            if search_response.status_code == 200: 
+                # Append to the all_course_details list:
+                all_course_details.append(search_response.json())
+            else:
+                print('Failed to search for courses. Status code:', search_response.status_code)
         else:
-            print('Failed to search for courses. Status code:', search_response.status_code)
-    else:
-        print('Failed to POST to search for term. Status code:', post_response.status_code)
+            print('Failed to POST to search for term. Status code:', post_response.status_code)
 
 # Serializing json:
 json_object = json.dumps(all_course_details, indent=4)
