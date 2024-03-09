@@ -1,5 +1,6 @@
 import requests
 import json
+import pandas as pd
 
 # Define the constants
 SUBJECT = 'CS'
@@ -84,56 +85,50 @@ term_response = requests.get(**term_options)
 
 # Check if the request was successful
 if term_response.status_code == 200:
-    print(term_response.json())
-    
-    # Set term code
-    TERM_CODE = '202450'
-    post_options['data']['term'] = TERM_CODE
-    search_options['params']['txt_term'] = TERM_CODE
-    course_description_options['params']['term'] = TERM_CODE
-    subject_search_options['params']['term'] = TERM_CODE
+    upcoming_terms = term_response.json()
 
-    subjects_response = requests.get(**subject_search_options)
-
-    if subjects_response.status_code == 200:
-        print('Subjects retrieved:', subjects_response.json())
-    else:
-        print('Failed to get course description. Status code:', subjects_response.status_code)
-
-    # Set cookies
-    # cookiejar = requests.cookies.RequestsCookieJar()
-    # for cookie in term_response.headers['Set-Cookie'].split(','):
-    #     cookiejar.set(*cookie.strip().split(';', 1))
-
+    # Setting cookies:
     post_options['cookies'] = term_response.cookies
     search_options['cookies'] = term_response.cookies
     reset_form_options['cookies'] = term_response.cookies
+else:
+    print('Failed to retrieve terms. Status code:', term_response.status_code)
+
+all_course_details = {}
+
+for term in upcoming_terms:
+    TERM_CODE = term['code']
+    post_options['data']['term'] = TERM_CODE
+    search_options['params']['txt_term'] = TERM_CODE
 
     # POST to search for courses under the term
     post_response = requests.post(**post_options)
 
-    if post_response.status_code == 200:
+    if post_response.status_code == 200:       
         print(post_response.json())
-
-        # Assume it worked
         search_response = requests.post(**search_options, allow_redirects=True)
-        
         if search_response.status_code == 200:
             # Resolved
-            print(search_response.content)
-            # print(json.dumps(search_response.json(), indent=2))
+            all_course_details.update(search_response.json())
         else:
             print('Failed to search for courses. Status code:', search_response.status_code)
-
-        description_response = requests.post(**course_description_options)
-
-        if description_response.status_code == 200:
-            # Resolved
-            print(description_response.content)
-            # reset_response = requests.post(**reset_form_options)
-        else:
-            print('Failed to get course description. Status code:', description_response.status_code)
     else:
         print('Failed to POST to search for term. Status code:', post_response.status_code)
-else:
-    print('Failed to retrieve terms. Status code:', term_response.status_code)
+
+# Serializing json
+json_object = json.dumps(all_course_details, indent=4)
+ 
+# Writing to sample.json
+with open("all_courses.json", "w") as outfile:
+    outfile.write(json_object)
+
+# Assume it worked
+# course_description_options['params']['term'] = TERM_CODE 
+# description_response = requests.post(**course_description_options)
+
+# if description_response.status_code == 200:
+#     # Resolved
+#     print(description_response.content)
+#     # reset_response = requests.post(**reset_form_options)
+# else:
+#     print('Failed to get course description. Status code:', description_response.status_code)
